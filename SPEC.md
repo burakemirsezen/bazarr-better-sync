@@ -1,6 +1,6 @@
 # Bazarr Better Sync — Product and Engineering Specification
 
-Status: requirements baseline; implementation choices remain open where identified below.
+Status: confirmed requirements baseline; routine engineering decisions are delegated within the constraints below.
 
 Date: 2026-10-29
 
@@ -22,25 +22,33 @@ This repository starts with a specification. Creating an application, container 
 | Bazarr | Keep using upstream Bazarr; no separately maintained fork. |
 | Integration | A small custom post-processing client submits queued jobs and returns promptly. |
 | Job interaction | Progress, results, reports, and retries are available in the companion's web UI. |
+| Existing library | Import an inventory through Bazarr's API; analyse and repair only the movies, episodes, or seasons explicitly selected by the user. Import alone must not enqueue alignment jobs or change subtitles. |
 | First-version languages | English subtitle alignment against English audio. Turkish is deferred. |
 | First-version formats | SRT, ASS, and SSA. |
 | Uncertain automatic results | Keep the original subtitle; expose the reason and correction controls in the UI. |
 | Manual controls | Job reports, retry, audio-track selection, and manual timing anchors entered as timestamps. |
 | Media preview | An embedded video player is outside the selected first-version UI scope. |
 | Compute | CPU operation first, with the code structured to allow GPU inference backends later. No GPU requirement for the first version. |
+| Inference locality | Process media and subtitle content locally. Model downloads are allowed; external AI processing is not part of the approved design. |
 | Runtime environment | Containerized service intended to run in Kubernetes. |
+| Runtime complexity | One application instance with persistent state, without a required separately operated database or queue service. |
 | Deployment deliverables | Container image and operating documentation. The owner manages Kubernetes deployment separately; no Helm chart or Kubernetes manifests are requested. |
 | File access | Shared media storage mounted into the service, with configurable mappings from Bazarr paths. Media upload/download is not required. |
 | Browser authentication | Authentik in front of the application, configured by the owner. No application-managed login or accounts. |
 | Bazarr API access | Direct internal Kubernetes connection with no application authentication; access restrictions belong to the owner's deployment. |
+| Validated automatic results | Apply validated corrections automatically, preserving originals and providing rollback. Uncertain results remain unchanged. |
+| Manual corrections | Show a preview and require an explicit Apply action for manually anchored corrections. |
+| Engineering authority | Agents may choose and document routine implementation details. Scope changes, new operational dependencies, and deployment-requirement changes need owner approval. |
+| Development order | Benchmark alignment candidates and establish evidence of quality before building the full workflow around the chosen approach. |
 
-Later decisions must be recorded explicitly. An item in the open-decisions section is not permission to select an arbitrary default.
+Later decisions must be recorded explicitly. Delegated engineering choices must include their reasoning and relevant evidence. Remaining owner decisions must be asked rather than silently assumed.
 
 ## 3. Scope and boundaries
 
 ### First-version product scope
 
 - Accept work submitted after a Bazarr subtitle download through its existing custom post-processing facility.
+- Import the existing library into a browsable catalog from Bazarr's API and permit selected movies, episodes, or seasons to be submitted for analysis and repair.
 - Align English SRT, ASS, and SSA subtitles against a selected English audio track.
 - Correct supported timing problems while preserving the authored subtitle content and presentation.
 - Show queued and running work, completion outcomes, uncertain results, and failures.
@@ -59,7 +67,7 @@ Later decisions must be recorded explicitly. An item in the open-decisions secti
 - Media uploads and corrected-file downloads as the normal integration mechanism.
 - Helm charts, Kubernetes manifests, ingress deployment, Authentik configuration changes, or live-cluster changes.
 
-Batch import of an existing library, scheduled rescans, automatic subtitle re-downloads, and direct media-player refresh integrations have not been requested. They remain open scope decisions rather than implicit first-version features.
+Catalog import and processing selected existing items are first-version requirements. Background assessment of the whole library, scheduled rescans, automatic subtitle re-downloads, and direct media-player refresh integrations have not been approved. Import must not imply authorization to process or repair the whole library.
 
 ## 4. Bazarr integration contract
 
@@ -83,26 +91,51 @@ Because work is asynchronous, a player may initially see the original subtitle. 
 
 The submission client needs a bounded request timeout and actionable output for submission failures. A successful submission means the job was accepted, not that alignment has succeeded. Retry and duplicate-submission semantics must be specified before implementation.
 
+### Existing-library discovery and selection
+
+Use read requests to Bazarr's API to populate the companion's catalog. Do not require a Bazarr database mount or couple the product to direct database access. Verify the API contract against the installed Bazarr version during implementation.
+
+The API currently exposes movie and series listings, episodes for selected series, and subtitle metadata including language, path, and embedded-track information. Import should record source identifiers and map the returned media/subtitle paths to the configured shared mounts. The implementation must handle paging and per-series episode retrieval without assuming one response contains the whole library.
+
+Discovery and analysis are separate operations:
+
+1. The owner configures the Bazarr URL, its API key, and path mappings.
+2. An import reads library/subtitle metadata and builds or updates the local catalog. Import does not run transcription, decode entire media files to assess timing, enqueue alignment jobs, or modify subtitles.
+3. Imported items are marked as unassessed, not presumed correctly synced or out of sync.
+4. The owner selects movies, episodes, or seasons and starts processing. The UI must show the selected subtitle targets and item count so the scope is clear before submission.
+5. Only selected eligible targets enter the alignment queue. A selection must not silently expand to the whole series or library.
+6. Validated automatic corrections follow the approved backup/rollback policy; uncertain results remain unchanged and available for review.
+
+V1 alignment eligibility remains English SRT/ASS/SSA on accessible shared storage. Non-English subtitles may be represented in the catalog but must not be queued for an unsupported alignment workflow. Embedded subtitle tracks must be identified separately; discovery does not authorize rewriting media containers or automatically extracting/replacing embedded tracks. Missing, stale, unsupported, or unmappable entries must be reported without deleting or modifying the original files.
+
+Repeated imports must reconcile source entries without generating duplicate alignment work. A catalog refresh is not an instruction to rerun prior jobs. Automatic refresh scheduling is not selected; provide an explicit import/refresh action initially.
+
+The companion uses Bazarr's API for discovery, not to invoke Bazarr's existing sync, change language profiles, or trigger bulk download/repair actions. API credentials must stay out of public repository content and diagnostic logs.
+
 ## 5. Logical architecture
 
 ```mermaid
 flowchart LR
     B[Bazarr post-processing client] -->|Internal job submission| A[Application API]
+    D[Bazarr library API] -->|Read-only metadata import| L[Library catalog]
     U[Browser] --> I[Owner-managed ingress and Authentik]
     I --> W[Web UI and application API]
     W --> J[Job state and queue]
+    W -->|Explicit selection| L
+    L -->|Selected targets only| J
     A --> J
     J --> P[Alignment worker]
     P --> M[Shared media and subtitle storage]
     P --> C[Inference cache and job reports]
 ```
 
-These are logical responsibilities, not a decision to deploy separate containers or external services. Process topology, storage technology, queue implementation, UI framework, and backend language are still open.
+These are logical responsibilities within the approved single application instance. Persistent job state is required; a separately operated database or queue must not become a mandatory dependency without owner approval. Agents may select internal process topology, storage technology, queue implementation, UI framework, and backend language, documenting the tradeoffs.
 
 ### Required responsibilities
 
 - **Submission client:** pass input references and supported metadata, handle acknowledgement and connection failures, and return promptly to Bazarr.
 - **API:** validate submissions, expose job state and reports, and accept retry and manual-anchor actions.
+- **Library connector/catalog:** read Bazarr's library metadata, reconcile catalog entries, expose explicit item selection, and keep discovery separate from analysis and repair.
 - **Job coordination:** control concurrency, identify repeated work, and report interruption/recovery outcomes.
 - **Worker:** inspect input files, select or accept an audio reference, obtain timing evidence, align, validate, and publish a supported result.
 - **Web UI:** present enough evidence for a user to understand an outcome and correct it without editing subtitle files manually.
@@ -110,7 +143,7 @@ These are logical responsibilities, not a decision to deploy separate containers
 
 ## 6. Alignment approach to evaluate
 
-The following is an engineering proposal for evaluation, not a selection of a particular model or library:
+The following is an engineering proposal for evaluation. Agents may choose a model/library based on benchmark evidence within the approved CPU/local-processing constraints:
 
 1. Inspect the media and enumerate audio tracks. Record the chosen track in the job report. Selection rules for ambiguous, missing, dubbed, or commentary-track metadata must be decided explicitly; the user must be able to override the choice.
 2. Parse subtitle cues without discarding text, formatting, styles, or unrelated metadata.
@@ -121,7 +154,7 @@ The following is an engineering proposal for evaluation, not a selection of a pa
 7. Validate the proposed result across the media, including regions not used to fit the correction. Produce a report explaining support, uncertainty, and changes.
 8. Install a successful result according to an explicitly defined file-update policy. If evidence is insufficient, preserve the existing subtitle and expose the job for review.
 
-WhisperX, CPU-capable Whisper implementations, ffsubsync, and alass are candidates to assess. No candidate is mandated by this spec, and no model size, precision, or performance claim has been selected.
+WhisperX, CPU-capable Whisper implementations, ffsubsync, and alass are candidates to assess. No candidate is mandated by this spec. Agents must document model/backend selection, precision, licensing constraints, and measured quality/resource tradeoffs rather than claim a performance result before benchmarking.
 
 The system must not assume that a high-quality subtitle is a verbatim transcript, that every line corresponds to speech, or that every subtitle cue has a one-to-one transcript match. Repeated phrases, songs, overlapping speakers, sound-effect captions, sparse/forced subtitles, and different video edits belong in evaluation.
 
@@ -142,11 +175,13 @@ Shared-storage integration must account for:
 - Concurrent jobs targeting the same subtitle.
 - Restarts, cancellation/interruption, and write failures.
 
-Before an automatic write, the worker must ensure it is still modifying the intended input version and avoid publishing a partial file. The exact locking, replacement, original-backup, rollback, and retention mechanisms remain open engineering decisions and must be resolved before enabling writes.
+Before an automatic write, the worker must ensure it is still modifying the intended input version and avoid publishing a partial file. Validated automatic corrections may replace the active subtitle only after preserving its original and recording a usable rollback reference. The UI must provide rollback; rollback must also respect later file changes rather than overwrite a newer subtitle blindly.
+
+Agents may choose and document locking, version checks, replacement, and backup/rollback mechanisms. Backup retention/storage policy remains an owner decision; automatic expiry or deletion must not silently remove the only recovery copy.
 
 ## 8. Web UI and manual timing anchors
 
-The UI must expose a job list, job detail/report view, retry control, audio-track selection, and timestamp-based anchor entry. It does not require a browser video player.
+The UI must expose the imported library catalog and explicit target selection, a job list, job detail/report view, retry control, audio-track selection, timestamp-based anchor entry, and rollback. It does not require a browser video player.
 
 A job report should distinguish an unchanged/already-aligned result, an applied correction, an uncertain result needing review, and an operational failure. Reports should identify the inputs, audio track, processing stage, proposed/applied timing changes, supporting matches, and unresolved regions. Exact status names and the confidence presentation are not selected yet; an uncalibrated score must not be presented as a guaranteed probability of correctness.
 
@@ -162,11 +197,11 @@ The anchor UI must make the timestamp's meaning explicit, such as the selected c
 
 One anchor can support an offset correction; two or more can constrain drift. Cuts may require anchors in separate sections. An anchor does not prove that every intervening subtitle matches the audio.
 
-The exact anchor interpolation/section rules, preview representation, and whether users explicitly approve manually derived output before it replaces the active subtitle remain open decisions. Manual input must not bypass file consistency checks.
+Manually derived output must be previewed and installed only after the user selects Apply. Manual input must not bypass validation, original preservation, or file consistency checks. Agents may select and document anchor interpolation/section rules and the preview representation.
 
 ## 9. CPU first; GPU path later
 
-The first implementation and container image must operate without a GPU. No CUDA dependency or GPU device must be mandatory to start the service or run a job.
+The first implementation and container image must operate without a GPU. No CUDA dependency or GPU device must be mandatory to start the service or run a job. Media/subtitle inference must execute locally; downloading model artifacts is allowed, but sending library content to external AI services is outside the approved design.
 
 Inference configuration and execution must be isolated behind a backend boundary so that future GPU support does not require rewriting the queue, API, subtitle parsers, or manual-anchor UI. Backend/device/model identity must be included in relevant cache metadata and diagnostic reports.
 
@@ -174,11 +209,11 @@ An Intel iGPU is available in the intended environment, but its model and compat
 
 CPU throughput, memory use, and acceptable turnaround time must be measured on representative hardware and media. The specification deliberately sets no invented core count, RAM limit, concurrency default, or minutes-per-episode target.
 
-Caching should avoid repeating expensive speech analysis for the same valid media/audio input. Cache identity, invalidation, storage size, eviction, and retention need explicit decisions; a filename alone is insufficient evidence that content is unchanged.
+Caching should avoid repeating expensive speech analysis for the same valid media/audio input. Agents may choose and document cache identity and invalidation; a filename alone is insufficient evidence that content is unchanged. Storage budgets and retention remain owner decisions.
 
 ## 10. Container and Kubernetes operating contract
 
-The implementation must provide a reproducible container build and document how to run the resulting image in the owner's Kubernetes environment. Deployment resources are maintained elsewhere by the owner.
+The implementation must provide a reproducible container build for one application instance with persistent state, and document how to run the resulting image in the owner's Kubernetes environment. Accepted jobs must survive application restarts, with interrupted work recovered or surfaced according to a documented policy. Deployment resources are maintained elsewhere by the owner.
 
 The operating documentation must describe:
 
@@ -192,7 +227,7 @@ The operating documentation must describe:
 - Logs and diagnostic data needed to investigate failures.
 - The trusted-ingress and internal-API deployment boundary described below.
 
-Container registry, image publishing workflow, base image, model download strategy, numeric resource settings, ports, and volume paths remain unselected. Building an image must not imply deployment to the owner's cluster.
+Container registry, target architectures, numeric resource budgets, and retention settings remain owner decisions. Agents may choose and document the publishing/build implementation, base image, model provisioning strategy, listener/health interfaces, and container-side paths within the agreed operating contract. New required external services or changed deployment requirements need owner approval. Building an image must not imply deployment to the owner's cluster.
 
 ## 11. Access boundary: Authentik and internal API
 
@@ -200,6 +235,7 @@ The application will not implement its own accounts, password storage, interacti
 
 - Browser access goes through owner-managed ingress protected by Authentik.
 - The Bazarr submission client uses the internal Kubernetes service directly, without interactive login or application credentials.
+- The separate outbound connection from the companion to Bazarr uses Bazarr's API key for library discovery. This does not add authentication to the companion's inbound API.
 - The owner manages restrictions on direct service access so that the external route cannot bypass Authentik and untrusted workloads cannot reach the unauthenticated API.
 - The application must document that direct access grants its supported operations; a private service address alone is not a user-authentication mechanism.
 - The UI and state-changing API actions still require ordinary request validation. The implementation must resolve browser request-origin/CSRF behavior for the reverse-proxy deployment.
@@ -211,6 +247,12 @@ No Authentik, ingress, network-policy, or cluster change is part of the current 
 ## 12. Evaluation and acceptance plan
 
 The intended benefit is fewer incorrect alignments and fewer harmful automatic changes. Success must be demonstrated, not inferred from a model's transcription accuracy or a tool's exit status.
+
+### Benchmark-first implementation gate
+
+Agents should start with a reproducible alignment evaluation harness and candidate experiments before committing to a model/backend or building the full product workflow. Compare existing tools and timestamped speech approaches on the same inputs, recording settings, timings, resource consumption, preservation checks, and results. Use the evidence to select and document the initial implementation approach.
+
+Owner-selected real failures and already-correct examples are needed to establish practical improvement. Synthetic offsets/drift can help develop the harness but cannot by themselves demonstrate that the product fixes the owner's real failures. If representative inputs are unavailable, agents must identify that evaluation gap and keep any quality conclusion provisional.
 
 Create a representative, owner-approved evaluation set covering:
 
@@ -227,31 +269,31 @@ Compare the companion with Bazarr/ffsubsync under recorded settings. Evaluate in
 
 Measure cue timing error, alignment coverage, harmful changes to already-correct subtitles, uncertain/rejected cases, runtime, and peak memory. Agree on the benchmark set and numeric pass criteria with the owner before using the results as a release gate.
 
-Operational verification must cover submission acknowledgement, duplicate requests, worker interruption, stale inputs, concurrent updates, path mappings, inaccessible storage, malformed files, and the agreed replacement policy. Container checks must demonstrate CPU operation without GPU devices and the documented health/configuration interfaces.
+Operational verification must cover metadata-only catalog import, repeat imports, English/format eligibility, selected-item boundaries, submission acknowledgement, duplicate requests, worker interruption, stale inputs, concurrent updates, path mappings, inaccessible storage, malformed files, replacement/rollback, and explicit Apply for manual corrections. Verify that importing or refreshing a library creates no alignment jobs and changes no media/subtitle files. Container checks must demonstrate CPU operation without GPU devices and the documented health/configuration interfaces.
 
 No live-media corpus, credentials, or private infrastructure configuration should be committed as test fixtures to this public repository.
 
-## 13. Open decisions — ask before selecting
+## 13. Remaining owner decisions and delegated engineering choices
 
 | Decision | Current status |
 | --- | --- |
-| Backend language, API framework, and UI framework | Not selected. |
-| ASR/word-alignment engine, model, precision, and languages of audio detection | Not selected; benchmark candidates first. |
-| Use of external AI services / inference locality requirements | Not explicitly settled; no external service integration has been selected. |
-| Optional fast alignment using ffsubsync/alass | Candidate approach only. |
-| Queue, persistent state, runtime topology, restart/retry policy | Not selected; acknowledge accepted work durably and define recovery semantics before implementation. |
-| Ambiguous audio-track selection rules | Not selected; manual selection is required. |
-| Treatment of sparse/forced subtitles and advanced ASS time-dependent tags | Must be specified and tested; no silent conversion. |
-| Successful-result replacement, backup/rollback, and retention policy | Not selected. Uncertain automatic results must keep the original. |
-| Manual-anchor model and final apply/approval interaction | Not selected. |
-| Confidence thresholds and benchmark release criteria | Not selected; require evidence and owner agreement. |
-| CPU/RAM budgets, concurrency, turnaround expectations | Not selected; measure on the intended node. |
-| Target container architectures, registry, tag policy, publishing workflow | Not selected. |
-| Cache/model provisioning, retention, reports, temporary-space limits | Not selected. |
-| Existing-library batch processing or media-server refresh | Scope not selected. |
+| Backend language, API framework, and UI framework | Delegated to agents; record reasoning. |
+| ASR/word-alignment engine, model, precision, and optional fast alignment | Delegated to agents after comparative benchmarks; CPU/local inference and format-preservation requirements remain binding. |
+| Queue, internal persistence, process topology, restart/retry policy | Delegated within one app instance with persistent state and no required external database/queue. Acknowledge accepted work durably and document recovery. |
+| Ambiguous audio-track selection rules | Agents may design and test the policy; manual selection is required and ambiguity must not be hidden. |
+| Sparse/forced subtitles and advanced ASS time-dependent tags | Agents must specify/test behavior; no silent corruption or format conversion. Scope expansion requires owner approval. |
+| Applying successful results | Confirmed: automatic validated corrections with originals preserved and rollback; uncertain results stay unchanged. Mechanisms are delegated. |
+| Manual-anchor model and preview | Interpolation and presentation are delegated. Preview plus explicit Apply is required. |
+| Locality/model provisioning | Local inference is confirmed; model downloads allowed. Provisioning implementation is delegated. |
+| Confidence thresholds and benchmark release criteria | Agents propose from evidence; owner agrees numeric release criteria. |
+| Benchmark media and intended-node CPU/RAM/turnaround budget | Owner input still needed; measure actual performance and keep unsupported quality claims provisional. |
+| Target container architectures and registry | Owner decision remains open. Build/publishing mechanics may be proposed by agents. |
+| Backup/cache/report retention and storage/temporary-space limits | Owner decision remains open; agents may propose settings and implement configurable controls. |
+| Existing library | Confirmed: Bazarr API catalog import; only explicitly selected movies/episodes/seasons are analysed or repaired. No background whole-library assessment. |
+| Scheduled refresh/rescan and direct media-server refresh | Scope remains unapproved. |
 | Software/documentation license | Not selected; do not add a license by assumption. |
 
-These open choices do not prevent publishing this specification. They prevent treating the specification as approval for unchosen implementation defaults.
+Agents may research and implement delegated technical choices without repeatedly asking the owner, provided they document the choices and stay within approved scope, operational dependencies, and deployment requirements. Ask before changing those boundaries or deciding the owner-owned items above.
 
 ## 14. References and current integration observations
 
@@ -261,6 +303,8 @@ Reviewed on 2026-10-29. Upstream branch links can change; verify behavior agains
 - [Bazarr post-processing implementation](https://github.com/morpheus65535/bazarr/blob/master/bazarr/subtitles/post_processing.py) waits for the command via `communicate()` with no explicit timeout in the inspected function. The queued submission client must therefore return promptly and implement its own request timeout. In the inspected version, output/error logging is not a rich job-result integration.
 - [Bazarr subtitle processing flow](https://github.com/morpheus65535/bazarr/blob/master/bazarr/subtitles/processing.py) applies existing sync before custom post-processing and performs subsequent notifications. Later companion completion does not automatically reuse that notification sequence.
 - [Bazarr sync integration](https://github.com/morpheus65535/bazarr/blob/master/bazarr/subtitles/tools/subsyncer.py) calls ffsubsync; FFmpeg is used for media handling.
+- [Bazarr movies API](https://github.com/morpheus65535/bazarr/blob/master/bazarr/api/movies/movies.py), [series API](https://github.com/morpheus65535/bazarr/blob/master/bazarr/api/series/series.py), and [episodes API](https://github.com/morpheus65535/bazarr/blob/master/bazarr/api/episodes/episodes.py) expose library listings. The inspected episode endpoint requires series or episode IDs; pagination and library traversal must be implemented deliberately.
+- [Bazarr API processing and authentication](https://github.com/morpheus65535/bazarr/blob/master/bazarr/api/utils.py) attaches subtitle metadata and accepts the Bazarr API key through `X-API-KEY`. [Subtitle response fields](https://github.com/morpheus65535/bazarr/blob/master/bazarr/api/swaggerui.py) include language, path, and embedded-track identity. Verify these contracts against the installed version.
 - [ffsubsync](https://github.com/smacke/ffsubsync) provides the existing alignment baseline and subtitle-reference support.
 - [alass](https://github.com/kaegi/alass) supports offsets, framerate differences, and splits; it is an evaluation candidate.
 - [WhisperX](https://github.com/m-bain/whisperX) provides timestamped speech recognition/word alignment and CPU execution; it is a candidate, not a selected dependency.
