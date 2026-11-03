@@ -1,0 +1,133 @@
+{
+  "date": "2026-10-29",
+  "scope": "single 480-second owner-selected episode window; provisional existing subtitle reference",
+  "quality_claim": "No demonstrated timing improvement. Source-relative deltas are not timing accuracy.",
+  "asr_models": [
+    {
+      "model": "tiny.en",
+      "asr_seconds": 51.55285472399555,
+      "real_time_factor": 0.10740178067499073,
+      "peak_process_mib": 674.62109375,
+      "model_load_download_seconds": 0.7590880780480802,
+      "usable_words": 749,
+      "matched_cues": 50,
+      "total_cues": 154,
+      "coverage": 0.3246753246753247,
+      "status": "uncertain",
+      "reason": "Matched evidence covers too few cues",
+      "diagnostic_only_fit": {
+        "slope": 0.9990902253001324,
+        "offset_s": 3.7498170723497424,
+        "heldout_median_s": 0.554473008297748,
+        "heldout_max_s": 1.815203084306404,
+        "nonmonotonic_pairs": 0
+      },
+      "all_variants_abstained": true,
+      "original_subtitle_unchanged": true
+    },
+    {
+      "model": "base.en",
+      "asr_seconds": 87.14525429601781,
+      "real_time_factor": 0.18155261311670376,
+      "peak_process_mib": 815.29296875,
+      "model_load_download_seconds": 3.1959811160340905,
+      "usable_words": 926,
+      "matched_cues": 72,
+      "total_cues": 154,
+      "coverage": 0.4675324675324675,
+      "status": "uncertain",
+      "reason": "Transcript matches are not monotonic",
+      "diagnostic_only_fit": {
+        "slope": 0.9956401506255991,
+        "offset_s": 4.509881889977407,
+        "heldout_median_s": 0.5350620079805424,
+        "heldout_max_s": 92.64563364242963,
+        "nonmonotonic_pairs": 1
+      },
+      "all_variants_abstained": true,
+      "original_subtitle_unchanged": true
+    },
+    {
+      "model": "small.en",
+      "asr_seconds": 229.501593335066,
+      "real_time_factor": 0.4781283194480542,
+      "peak_process_mib": 1298.21875,
+      "model_load_download_seconds": 7.112345415866002,
+      "usable_words": 974,
+      "matched_cues": 90,
+      "total_cues": 154,
+      "coverage": 0.5844155844155844,
+      "status": "uncertain",
+      "reason": "Matched evidence covers too few cues",
+      "diagnostic_only_fit": {
+        "slope": 0.996004107865009,
+        "offset_s": 4.571062131272583,
+        "heldout_median_s": 0.5644225495618684,
+        "heldout_max_s": 1.3732628529779163,
+        "nonmonotonic_pairs": 0
+      },
+      "all_variants_abstained": true,
+      "original_subtitle_unchanged": true
+    }
+  ],
+  "installed_baseline": {
+    "flags": [
+      "--vad",
+      "webrtc",
+      "--no-fix-framerate",
+      "--gss",
+      "--max-offset-seconds",
+      "600"
+    ],
+    "results": [
+      {
+        "case": "unchanged",
+        "method": "ffsubsync_installed_profile",
+        "seconds": 1.304786026943475,
+        "sampled_peak_process_tree_mib": 85.83984375,
+        "returncode": 0,
+        "source_relative_delta": {
+          "mean_s": 3.9499999999999997,
+          "p95_s": 3.9500000000000455,
+          "max_s": 3.9500000000000455
+        }
+      },
+      {
+        "case": "offset_3s",
+        "method": "ffsubsync_installed_profile",
+        "seconds": 1.244597455020994,
+        "sampled_peak_process_tree_mib": 86.1640625,
+        "returncode": 0,
+        "source_relative_delta": {
+          "mean_s": 3.9599999999999995,
+          "p95_s": 3.9600000000000364,
+          "max_s": 3.9600000000000364
+        }
+      },
+      {
+        "case": "drift_0.6pct",
+        "method": "ffsubsync_installed_profile",
+        "seconds": 1.33072107587941,
+        "sampled_peak_process_tree_mib": 88.1640625,
+        "returncode": 0,
+        "source_relative_delta": {
+          "mean_s": 4.180961038961038,
+          "p95_s": 5.251999999999953,
+          "max_s": 5.347999999999956
+        }
+      },
+      {
+        "case": "split_5s",
+        "method": "ffsubsync_installed_profile",
+        "seconds": 1.261216043960303,
+        "sampled_peak_process_tree_mib": 86.58984375,
+        "returncode": 0,
+        "source_relative_delta": {
+          "mean_s": 7.258051948051947,
+          "p95_s": 9.060000000000002,
+          "max_s": 9.06000000000006
+        }
+      }
+    ]
+  }
+}

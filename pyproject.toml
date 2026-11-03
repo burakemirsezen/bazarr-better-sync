@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools==80.9.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bazarr-better-sync"
+version = "0.1.0.dev0"
+description = "Experimental local subtitle alignment companion for Bazarr"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+asr = ["faster-whisper==1.2.1"]
+# Desktop GPU worker. The GPU stack (torch/ROCm, transformers) is installed
+# separately from worker/requirements-gpu.txt; the coordinator needs none of it.
+worker = ["rapidfuzz==3.14.1", "numpy>=2"]
+
+[project.scripts]
+bazarr-better-sync = "bazarr_sync.__main__:main"
+bazarr-sync-submit = "bazarr_sync.submit:main"
+bazarr-sync-worker = "bazarr_sync.worker.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+bazarr_sync = ["static/*"]

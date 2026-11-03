@@ -1,0 +1,17 @@
+.git
+.venv
+__pycache__
+*.egg-info
+data
+work
+private
+benchmark-results
+.env
+.env.*
+tests
+*.mkv
+*.mp4
+*.wav
+*.srt
+*.ass
+*.ssa
