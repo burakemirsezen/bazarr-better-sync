@@ -14,11 +14,16 @@ asr = ["faster-whisper==1.2.1"]
 # Desktop GPU worker. The GPU stack (torch/ROCm, transformers) is installed
 # separately from worker/requirements-gpu.txt; the coordinator needs none of it.
 worker = ["rapidfuzz==3.14.1", "numpy>=2"]
+# Windows notification-area app for the worker.
+tray = ["pystray==0.19.5", "Pillow>=10"]
 
 [project.scripts]
 bazarr-better-sync = "bazarr_sync.__main__:main"
 bazarr-sync-submit = "bazarr_sync.submit:main"
 bazarr-sync-worker = "bazarr_sync.worker.__main__:main"
+
+[project.gui-scripts]
+bazarr-sync-tray = "bazarr_sync.worker.tray:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

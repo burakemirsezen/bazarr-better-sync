@@ -54,16 +54,42 @@ All requests send `Authorization: Bearer <token>`. Every body except audio is JS
 
 **Connectivity (owner decision 2026-11-03): private network only.** The desktop reaches the coordinator over the home LAN or a private overlay such as Tailscale or WireGuard. The worker endpoints are never published on a public ingress. The operator API (`/api/*` and the web UI, where proposals are reviewed and applied) stays behind Authentik.
 
-## Running the worker
+## Running the worker on Windows
 
-Requirements: Windows with an AMD GPU and a ROCm build of torch (see `worker/requirements-gpu.txt`, the environment that produced the benchmarks), the `worker` extra (`rapidfuzz`), an `alass-cli` executable, and about 10 GB VRAM.
+Requirements: an AMD GPU with about 10 GB VRAM and Python 3.12. The ROCm build of torch is pinned in `worker/requirements-gpu.txt`, the environment that produced the benchmarks.
+
+From a checkout of this repository, install for the current user (no admin rights needed):
 
 ```powershell
-$env:BBS_WORKER_TOKEN = '<token>'
-python -m bazarr_sync.worker --coordinator https://sync-worker.example --model-cache D:\models --alass C:\tools\alass-cli.exe
+.\worker\windows\install.ps1 -Coordinator https://bazarr-sync-worker.<tailnet>.ts.net -ReviewUrl https://bazarr-sync.example
 ```
 
-- **Models.** The worker loads the models on its first job and reuses them afterwards.
+The installer puts everything under `%LOCALAPPDATA%\BazarrSyncWorker`:
+
+- `venv\`: the Python environment.
+- `models\`: about 5.6 GB, downloaded on the first job.
+- `alass\`, `config.json`, `logs\` and `scratch\`.
+
+It asks for the worker token once and keeps it only in the user environment variable `BBS_WORKER_TOKEN`. It turns on start at login and launches the tray app.
+
+To reuse an existing setup, pass `-ExistingVenv` and `-ExistingModels` (both are moved into place) and `-ExistingAlass` (copied). A fresh machine downloads AMD's nightly ROCm wheels. If those have been withdrawn upstream, install a current ROCm torch yourself and pass that environment with `-ExistingVenv`.
+
+The **tray app** (`bazarr-sync-tray`, or `pythonw -m bazarr_sync.worker.tray`) sits in the notification area:
+
+- **Icon colour** shows the state: green idle, blue syncing, grey paused, orange coordinator unreachable, red error. The tooltip says what it is doing.
+- **Menu:** open the review page, pause/resume, start at login (a per-user Run registry entry), open logs, quit.
+- **Notifications:** a Windows notification appears when a proposal is ready for review.
+- **One instance only.** A second launch exits immediately, so two workers never compete for the GPU.
+
+Behaviour:
+
+- **Models.** They load on the first job, about 15 s and 6 GB VRAM. After 10 idle minutes they are unloaded so the GPU is free for other use.
+- **GPU problems.** If the models cannot load, the job is not marked failed. Its lease expires and the coordinator requeues it.
 - **Audio and scratch.** Audio stays in a per-job scratch folder, deleted when the job ends. Leftover `job-*` folders are removed at startup.
 - **Leases.** A lost lease stops the job without sending a result.
-- **Connection.** If the coordinator is unreachable, the worker keeps polling. Use `--once` to process at most one job.
+- **Connection.** If the coordinator is unreachable, the worker keeps polling.
+- **Quitting mid-job.** The lease expires and the job is requeued.
+
+For a console instead of the tray, run `python -m bazarr_sync.worker`, adding `--once` to process at most one job. Flags override `config.json`.
+
+To remove it, run `.\worker\windows\uninstall.ps1`. Add `-RemoveFiles` to delete the install folder and `-RemoveToken` to clear the token.
