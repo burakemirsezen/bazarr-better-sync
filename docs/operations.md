@@ -1,4 +1,6 @@
-# Operating the experimental service
+# Operating the existing CPU/manual prototype
+
+> Architecture transition (2026-10-31): this document describes commands, configuration and API already present in the checkout. The target is a Kubernetes coordinator plus desktop GPU worker; see [SPEC.md](../SPEC.md) and the [transition plan](transition-plan.md). Worker registration, leases, authenticated audio transfer, GPU execution and the desktop application are not implemented. Do not expose this prototype API as a remote worker interface. Live repair is paused; concept benchmarks must use read-only inputs and scratch proposals.
 
 ## Configuration
 
@@ -21,6 +23,10 @@ One application instance owns a data directory, enforced by an OS file lock. Use
 The container uses UID/GID 10001. Grant that identity access through deployment ownership/groups; do not indiscriminately chown the library. Replacing a subtitle requires writes to its parent directory. Read-only mounts are appropriate for discovery and model previews. Source operation needs ffprobe even in manual mode. Models and transcripts stay local; download hosts receive model requests, not media/subtitles.
 
 ## Integration behavior
+
+Use explicit item selection in the companion UI as the default optional timing-improvement workflow. Bazarr saves subtitles normally; companion analysis runs later for the items you request. Installing the service does not install a download hook. Keep that integration unconfigured unless you deliberately opt in to queueing new downloads.
+
+The companion's queue is independent of normal download completion and playback. An accepted job is optional analysis, and any publication still follows the configured review/validation policy with backups and rollback.
 
 Discovery pages movies and series, then requests episodes per series. The installed Bazarr contract was inspected during benchmarking; the connector uses its `seriesid[]` episode parameter. Import updates present/missing metadata and never creates jobs. Embedded, non-English, and unsupported-format subtitles are catalog-only. Eligibility is not a timing assessment. Processing starts only for explicitly selected IDs or an explicit download-hook submission.
 

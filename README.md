@@ -1,64 +1,42 @@
 # Bazarr Better Sync
 
-An experimental local subtitle alignment companion for upstream Bazarr, designed for a containerized Kubernetes environment without maintaining a Bazarr fork.
+Optional subtitle timing repair for upstream Bazarr. The target design uses a **Kubernetes coordinator and a desktop GPU worker**: the server records selected jobs and owns subtitle files; the desktop computes timing proposals while preserving the downloaded wording.
 
-The initial scope is queued, CPU-based English SRT/ASS/SSA alignment, shared media mounts, and a web UI for reports, retries, audio-track selection, and manual timestamp anchors. GPU backends and Turkish alignment are future work.
+**Status: architecture transition; proof of concept comes first.** The distributed worker, pairing, desktop application, and GPU backend are not implemented in this checkout. The existing Python service is an experimental CPU/manual prototype, retained as reusable infrastructure and evaluation tooling. No production release or real-media accuracy claim is made.
 
-Browser access is intended to sit behind Authentik. Bazarr connects to the internal API; network restrictions are managed by the deployment owner.
+## Intended workflow
 
-## Status
+1. Import Bazarr's catalog without analysing or modifying files.
+2. Select an episode, movie, or season and request **Advanced Sync**.
+3. A connected desktop worker claims the job and processes the selected audio locally on its GPU.
+4. It returns cue start/end times, evidence, and unresolved regions. The server renders these times onto the original subtitle document.
+5. Review the proposal and explicitly Apply. The server checks source versions, preserves an exact original, replaces atomically, and supports guarded rollback.
 
-The initial application provides metadata-only catalog import, selected-item processing, a durable queue, job reports, audio selection, manual timing previews, original backups, and guarded rollback. SRT, ASS, and SSA timestamp editing preserves authored content. Imports leave targets unselected and enqueue no analysis.
+The worker may rebuild individual cue timings and gaps. A single offset or global stretch is sufficient only when the evidence supports it. Subtitle generation, translation, and silent wording cleanup are outside this workflow. Normal Bazarr downloads do not wait for the desktop, and installing the companion must not enable a download hook.
 
-**Automatic model-based replacement is disabled.** The CPU speech-anchor candidate produces reviewable evidence; quality and numeric release criteria have not been established. It currently fits global offset/drift and abstains on insufficient evidence or inconsistent cuts. Manual corrections require preview and explicit Apply. Production Bazarr and Home-Infra configuration is not changed by this repository.
+The initial desktop target is Windows with an AMD Radeon RX 7800 XT. Model/backend selection is open. Larger models and substantial local compute are allowed when this GPU can run them; compatibility, timing accuracy, memory use, and runtime must be measured before selection. Inference remains local.
 
-Read [SPEC.md](SPEC.md), [engineering decisions](docs/engineering-decisions.md), [operating instructions](docs/operations.md), and the [CPU benchmark report](docs/benchmark-2026-10-29.md). Deployment manifests and Helm charts remain owner-maintained. No software license or image registry has been selected.
+## Start here
 
-## Run from source
+- [Product and engineering specification](SPEC.md): authoritative target architecture and boundaries.
+- [Transition plan](docs/transition-plan.md): concept experiments, acceptance evidence, and staged implementation.
+- [Engineering decisions](docs/engineering-decisions.md): implemented prototype choices and superseding direction.
+- [Initial GPU concept results](docs/benchmark-gpu-concept-2026-10-31.md): execution is feasible; real-quality gate remains incomplete.
+- [Prototype operations](docs/operations.md): commands and API that actually exist today.
+- [Timing-reference workflow](docs/timing-reference-workflow.md) and [historical CPU benchmark](docs/benchmark-2026-10-29.md).
 
-Python 3.11+ and FFmpeg/ffprobe on PATH are required. The base application has no third-party Python runtime dependencies.
+The first gate is convincing real-media evidence, including independent reference timings and already-correct controls. Controlled offsets alone cannot establish quality. Automatic publication remains disabled pending representative evaluation and owner-agreed release criteria.
+
+## Existing prototype
+
+Python 3.11+ and FFmpeg/ffprobe are required. The base application has no third-party Python runtime dependencies. See [operations](docs/operations.md) for persistent state, media mappings, Bazarr credentials, and access restrictions. Use `BBS_BACKEND=disabled` for catalog/manual operation; optional `faster-whisper` inference is an experimental CPU baseline.
 
 ```sh
 python -m pip install .
-export BBS_DATA_DIR=/path/to/persistent/state
-export BBS_MEDIA_ROOTS='["/media"]'
-export BBS_PATH_MAPPINGS='{"/movies":"/media/movies","/tv":"/media/tv"}'
-export BBS_BAZARR_URL=http://bazarr:6767
-# Provide BBS_BAZARR_API_KEY through your private environment/secret manager.
 python -m bazarr_sync
-```
-
-Visit port 8080. Import, filter by series/season/movie, select explicit eligible targets, and analyse the selection. In default manual mode, the worker probes audio metadata and shows cues without downloading a model. Enter intended cue-start anchors as `cue_index, seconds`, review the preview, and choose Apply if correct. Configure actual mount mappings; example paths above are illustrative.
-
-## Container
-
-```sh
-docker build -t bazarr-better-sync:dev .
-# Optional local CPU speech inference dependencies:
-docker build --build-arg INSTALL_ASR=1 -t bazarr-better-sync:asr-dev .
-```
-
-The image runs as UID/GID 10001 on port 8080. Mount writable persistent `/data` and explicitly configured media mounts. Start with read-only media for discovery/analysis; manual Apply requires subtitle-directory write access. Supply the same `BBS_*` settings. Browser ingress belongs behind owner-managed Authentik; restrict direct access to this unauthenticated service.
-
-## Optional speech candidate
-
-Install `.[asr]` or build the ASR image, set `BBS_BACKEND=faster-whisper`, and select `BBS_MODEL` and `BBS_THREADS`. Inference runs locally on CPU INT8. Named models download on first use. Immutable local model directories permit content-keyed transcript-cache reuse; named remote aliases deliberately do not reuse transcripts across jobs. Model choice remains experimental.
-
-## Bazarr download hook
-
-Copy `src/bazarr_sync/submit.py` into Bazarr's mounted configuration as a standalone script. It needs Python standard library only. Use the video/subtitle substitutions for your installed Bazarr version, as described in [operations](docs/operations.md). The client submits a durable job and returns promptly:
-
-```sh
-python /config/bazarr-sync-submit.py --url http://companion:8080 --video "/tv/example/video.mkv" --subtitle "/tv/example/video.en.srt" --language en --timeout 10
-```
-
-Replace those illustrative paths with Bazarr's command substitutions. Verify on scratch files first. This repository does not install the hook or replace Bazarr's manual Sync button. Acceptance is not completed alignment.
-
-## Verification
-
-```sh
 python -m unittest discover -s tests -v
-python -m bazarr_sync.benchmark --synthetic --output /tmp/synthetic-report.json
 ```
 
-Tests cover import/selection boundaries, durable deduplication, interrupted work, prompt acknowledgements during inference, path and origin checks, audio ambiguity, subtitle preservation, held-out fitting, manual previews, backups, rollback, stale files, and locking. Synthetic results validate mechanics, not speech accuracy or superiority to ffsubsync. The real-media benchmark found that all three speech-model candidates abstained; see the report for measured cost and remaining quality evidence.
+Media roots default to empty and must be configured explicitly. The current web service has no built-in authentication; protect it behind owner-managed Authentik and restricted networking. Its existing endpoints are **not** the future desktop worker protocol. No desktop worker connection should be exposed through them.
+
+The repository retains subtitle parsers, queue/catalog code, file preservation and rollback logic, UI, Docker/CI, and benchmark tooling for evaluation and reuse. No license, production image registry, retention policy, or distributed release has been selected. Kubernetes deployment remains owner-maintained.
