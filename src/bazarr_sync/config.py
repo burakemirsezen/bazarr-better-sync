@@ -19,6 +19,12 @@ class Config:
     backend: str = "disabled"
     model: str = "small.en"
     threads: int = 2
+    # remote-gpu backend: {worker name: sha256 hex of its bearer token}
+    worker_tokens: dict[str, str] = field(default_factory=dict, repr=False)
+    lease_seconds: int = 300
+    max_attempts: int = 3
+    auto_apply: bool = False
+    auto_apply_min_coverage: float = 0.8
 
     @classmethod
     def from_env(cls):
@@ -38,11 +44,25 @@ class Config:
             public_origin=os.getenv("BBS_PUBLIC_ORIGIN", "").rstrip("/"),
             backend=os.getenv("BBS_BACKEND", "disabled"), model=os.getenv("BBS_MODEL", "small.en"),
             threads=int(os.getenv("BBS_THREADS", "2")),
+            worker_tokens=json.loads(os.getenv("BBS_WORKER_TOKENS", "{}")),
+            lease_seconds=int(os.getenv("BBS_LEASE_SECONDS", "300")),
+            max_attempts=int(os.getenv("BBS_MAX_ATTEMPTS", "3")),
+            auto_apply=os.getenv("BBS_AUTO_APPLY", "false").lower() in {"1", "true", "yes"},
+            auto_apply_min_coverage=float(os.getenv("BBS_AUTO_APPLY_MIN_COVERAGE", "0.8")),
         )
-        if cfg.backend not in {"disabled", "faster-whisper"}:
-            raise ValueError("BBS_BACKEND must be disabled or faster-whisper")
+        if cfg.backend not in {"disabled", "faster-whisper", "remote-gpu"}:
+            raise ValueError("BBS_BACKEND must be disabled, faster-whisper or remote-gpu")
         if not 1 <= cfg.threads <= 128:
             raise ValueError("BBS_THREADS outside supported range")
+        if not isinstance(cfg.worker_tokens, dict) or any(
+                not isinstance(k, str) or not k or not isinstance(v, str) or len(v) != 64 for k, v in cfg.worker_tokens.items()):
+            raise ValueError("BBS_WORKER_TOKENS must map worker names to sha256 hex digests of their tokens")
+        if cfg.backend == "remote-gpu" and not cfg.worker_tokens:
+            raise ValueError("remote-gpu backend requires at least one entry in BBS_WORKER_TOKENS")
+        if not 30 <= cfg.lease_seconds <= 3600 or not 1 <= cfg.max_attempts <= 10:
+            raise ValueError("BBS_LEASE_SECONDS must be 30-3600 and BBS_MAX_ATTEMPTS 1-10")
+        if not 0 < cfg.auto_apply_min_coverage <= 1:
+            raise ValueError("BBS_AUTO_APPLY_MIN_COVERAGE must be in (0, 1]")
         if cfg.public_origin:
             parsed = urlsplit(cfg.public_origin)
             if (parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.path

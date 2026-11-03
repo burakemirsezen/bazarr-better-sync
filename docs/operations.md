@@ -1,6 +1,6 @@
 # Operating the existing CPU/manual prototype
 
-> Architecture transition (2026-10-31): this document describes commands, configuration and API already present in the checkout. The target is a Kubernetes coordinator plus desktop GPU worker; see [SPEC.md](../SPEC.md) and the [transition plan](transition-plan.md). Worker registration, leases, authenticated audio transfer, GPU execution and the desktop application are not implemented. Do not expose this prototype API as a remote worker interface. Live repair is paused; concept benchmarks must use read-only inputs and scratch proposals.
+> Architecture transition (2026-10-31): this document describes commands, configuration and API already present in the checkout. The target is a Kubernetes coordinator plus desktop GPU worker; see [SPEC.md](../SPEC.md) and the [transition plan](transition-plan.md). Update 2026-11-03: the `remote-gpu` backend adds token-authenticated worker endpoints under `/worker/v1/`, leases, audio artifacts and GPU execution on the desktop; see [gpu-worker.md](gpu-worker.md). Expose only `/worker/v1/` to workers. Never expose the operator API below as a remote worker interface. Live repair is paused; concept benchmarks must use read-only inputs and scratch proposals.
 
 ## Configuration
 

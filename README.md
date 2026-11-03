@@ -2,7 +2,7 @@
 
 Optional subtitle timing repair for upstream Bazarr. The target design uses a **Kubernetes coordinator and a desktop GPU worker**: the server records selected jobs and owns subtitle files; the desktop computes timing proposals while preserving the downloaded wording.
 
-**Status: architecture transition; proof of concept comes first.** The distributed worker, pairing, desktop application, and GPU backend are not implemented in this checkout. The existing Python service is an experimental CPU/manual prototype, retained as reusable infrastructure and evaluation tooling. No production release or real-media accuracy claim is made.
+**Status (2026-11-03): timing method validated; coordinator/worker slice implemented.** The sequence mapper v0.2 passed held-out synthetic controls and owner review on real episodes. It measured a 130 ms median error against blind human marks, versus about 2 s for the downloaded subtitles ([evidence](docs/benchmark-sequence-mapper-2026-11-03.md)). The coordinator's `remote-gpu` backend and the desktop worker (`python -m bazarr_sync.worker`) are in this checkout ([operating guide](docs/gpu-worker.md)). Still pending: pairing/TLS setup, a desktop UI application and packaging. Evaluation so far covers one series and English only.
 
 ## Intended workflow
 
@@ -21,7 +21,8 @@ The initial desktop target is Windows with an AMD Radeon RX 7800 XT. Model/backe
 - [Product and engineering specification](SPEC.md): authoritative target architecture and boundaries.
 - [Transition plan](docs/transition-plan.md): concept experiments, acceptance evidence, and staged implementation.
 - [Engineering decisions](docs/engineering-decisions.md): implemented prototype choices and superseding direction.
-- [Initial GPU concept results](docs/benchmark-gpu-concept-2026-10-31.md): execution is feasible; real-quality gate remains incomplete.
+- [Sequence mapper evidence](docs/benchmark-sequence-mapper-2026-11-03.md) and [GPU worker operations](docs/gpu-worker.md): the selected timing method and how to run it.
+- [Initial GPU concept results](docs/benchmark-gpu-concept-2026-10-31.md): execution is feasible; superseded by the sequence mapper evidence.
 - [Prototype operations](docs/operations.md): commands and API that actually exist today.
 - [Timing-reference workflow](docs/timing-reference-workflow.md) and [historical CPU benchmark](docs/benchmark-2026-10-29.md).
 

@@ -1,6 +1,6 @@
 # Transition plan: prove timing repair, then distribute it
 
-Updated 2026-10-31. Status: initial isolated concepts tested; no distributed implementation yet. Gate A remains incomplete; see [GPU concept results](benchmark-gpu-concept-2026-10-31.md). [SPEC.md](../SPEC.md) is authoritative.
+Updated 2026-11-03. Status: **Gate A passed** with the sequence mapper v0.2 ([evidence](benchmark-sequence-mapper-2026-11-03.md)). The owner chose to implement it. A Gate B slice is in the checkout: leases, audio artifacts, validated idempotent results, server-rendered proposals, cancellation, and opt-in automatic apply under an owner-agreed policy ([operations](gpu-worker.md)). Still open: private connectivity/TLS and pairing, a real-media round trip through the cluster, Gate C desktop UI, and Gate D packaging. [SPEC.md](../SPEC.md) is authoritative.
 
 ## Immediate state
 

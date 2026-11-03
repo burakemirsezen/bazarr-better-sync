@@ -11,10 +11,14 @@ dependencies = []
 
 [project.optional-dependencies]
 asr = ["faster-whisper==1.2.1"]
+# Desktop GPU worker. The GPU stack (torch/ROCm, transformers) is installed
+# separately from worker/requirements-gpu.txt; the coordinator needs none of it.
+worker = ["rapidfuzz==3.14.1", "numpy>=2"]
 
 [project.scripts]
 bazarr-better-sync = "bazarr_sync.__main__:main"
 bazarr-sync-submit = "bazarr_sync.submit:main"
+bazarr-sync-worker = "bazarr_sync.worker.__main__:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
